@@ -1,4 +1,4 @@
-# 🛂 Identity Reconciliation Service
+# Identity Reconciliation Service
 
 A backend service to reconcile and unify contact data using email and phone number. The service identifies existing contacts, creates primary or secondary contact relationships, and returns a consolidated view of a contact.
 
@@ -23,7 +23,7 @@ A backend service to reconcile and unify contact data using email and phone numb
 
 ---
 
-## 📤 API Endpoint
+##  API Endpoint
 
 ### `POST /identify`
 
