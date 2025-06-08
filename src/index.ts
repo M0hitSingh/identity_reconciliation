@@ -10,6 +10,9 @@ dotenv.config();
 // Register API routes
 app.use('/', router);
 
+app.get("/", (req, res) => {
+    res.send("<h1>Welcome to the Identity Reconciliation API</h1> <p>Use the /identify endpoint to identify a contact</p>");
+});
 // Not Found Handler
 app.use((req: Request, res: Response, next: Function) => {
     const error = {
