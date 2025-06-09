@@ -2,17 +2,16 @@ import { Sequelize, DataTypes } from 'sequelize';
 
 const Contacts = {
   phoneNumber: {
-    type: DataTypes.STRING,
-    allowNull: false
+    type: DataTypes.BIGINT,
+    allowNull: true
   },
   email: {
     type: DataTypes.STRING,
-    allowNull: false,
-    unique: true
+    allowNull: true,
   },
   linkedId: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true
   },
   linkPrecedence: {
     type: DataTypes.STRING,

@@ -1,95 +1,83 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
+import { Op } from 'sequelize';
 import { Contact } from '../config/db.config';
 import { Contacts } from '../models/contact';
+import { AppError } from '../utils/AppError';
 
-// Helper function to find or create a secondary contact
-const findOrCreateSecondary = async (newContactInfo: { email?: string; phoneNumber?: string }, primaryId: number) => {
-  if (newContactInfo.email || newContactInfo.phoneNumber) {
-    const secondaryContact = await Contact.findOne({
+// Define Contact interface
+interface ContactInterface {
+  id: string;
+  email?: string;
+  phoneNumber?: string;
+  linkedId?: string;
+  linkPrecedence: string;
+  createdAt: Date;
+  updatedAt?: Date;
+  deletedAt?: Date;
+}
+
+export const identifyContact = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email, phoneNumber } = req.body;
+    if (!email && !phoneNumber) {
+      throw new AppError('Either email or phoneNumber must be provided.', 400);
+    }
+
+    // Fetch all contacts where email or phoneNumber matches
+    const contacts = await Contact.findAll({
       where: {
-        email: newContactInfo.email,
-        phoneNumber: newContactInfo.phoneNumber,
-        linkedId: primaryId
-      }
-    });
+        [Op.or]: [
+          email ? { email } : {},
+          phoneNumber ? { phoneNumber } : {}
+        ]
+      },
+      order: [['createdAt', 'ASC']]
+    }) as unknown as ContactInterface[];
 
-    if (!secondaryContact) {
-      await Contact.create({
-        ...newContactInfo,
-        linkedId: primaryId,
-        linkPrecedence: 'secondary'
-      });
-    }
-  }
-};
-
-const identifyContact = async (req: Request, res: Response) => {
-  const { email, phoneNumber } = req.body;
-
-  if (!email && !phoneNumber) {
-    res.status(400).json({ error: 'At least one of email or phoneNumber must be provided' });
-    return;
-  }
-  let primaryContact: typeof Contacts | any = null;
-  let secondaryContacts: any = [];
-
-
-  // Find the primary contact if it exists
-  if (email) {
-    primaryContact = await Contact.findOne({ where: { email, linkPrecedence: 'primary' } });
+    let primaryContact = contacts.find((c: ContactInterface) => c.linkPrecedence === 'primary') || contacts[0];
     if (!primaryContact) {
-      primaryContact = await Contact.findOne({ where: { email, linkPrecedence: 'secondary' } });
-      if (primaryContact) {
-        secondaryContacts = await Contact.findAll({ where: { linkedId: primaryContact.id, linkPrecedence: 'secondary' } });
-      }
-    }
-  }
-
-  if (phoneNumber) {
-    const phoneContact: any = await Contact.findOne({ where: { phoneNumber } });
-    if (phoneContact) {
-      if (!primaryContact) {
-        primaryContact = phoneContact;
-      } else if (phoneContact.id !== primaryContact.id) {
-        primaryContact = await Contact.findOne({ where: { id: phoneContact.linkedId } });
-        if (primaryContact) {
-          secondaryContacts.push(phoneContact);
+      // Create new contact if none exist
+      primaryContact = await Contact.create({ email, phoneNumber, linkPrecedence: 'primary' }) as unknown as ContactInterface;
+      res.status(200).json({
+        contact: {
+          primaryContatctId: primaryContact.id,
+          emails: [primaryContact.email].filter(Boolean),
+          phoneNumbers: [primaryContact.phoneNumber].filter(Boolean),
+          secondaryContactIds: []
         }
-      }
+      });
+      return;
     }
-  }
 
-  if (!primaryContact) {
-    // Create new primary contact
-    primaryContact = await Contact.create({
-      email,
-      phoneNumber,
-      linkPrecedence: 'primary'
-    });
+    const secondaryContacts = contacts.filter(c => c.id !== primaryContact.id);
+    const isNewEmail = email && !contacts.some(c => c.email === email);
+    const isNewPhone = phoneNumber && !contacts.some(c => c.phoneNumber === phoneNumber);
+    console.log(isNewEmail, isNewPhone)
+    if (isNewEmail || isNewPhone) {
+      const newSecondary = await Contact.create({
+        email,
+        phoneNumber,
+        linkedId: primaryContact.id,
+        linkPrecedence: 'secondary'
+      }) as unknown as ContactInterface;
+      secondaryContacts.push(newSecondary);
+    }
+
+    const allContacts = [primaryContact, ...secondaryContacts];
+    const emails = [...new Set(allContacts.map(c => c.email).filter(Boolean))];
+    const phoneNumbers = [...new Set(allContacts.map(c => c.phoneNumber).filter(Boolean))];
+    const secondaryContactIds = secondaryContacts.map(c => c.id);
+
     res.status(200).json({
       contact: {
         primaryContatctId: primaryContact.id,
-        emails: email ? [email] : [],
-        phoneNumbers: phoneNumber ? [phoneNumber] : [],
-        secondaryContactIds: []
+        emails,
+        phoneNumbers,
+        secondaryContactIds
       }
     });
-    return;
+  } catch (err: any) {
+    console.log(err)
+    next(new AppError(err?.message || 'Internal Server Error', 500));
   }
-
-  await findOrCreateSecondary({ email, phoneNumber }, primaryContact.id);
-  secondaryContacts = await Contact.findAll({ where: { linkedId: primaryContact.id, linkPrecedence: 'secondary' } });
-
-  res.status(200).json({
-    contact: {
-      primaryContatctId: primaryContact.id,
-      emails: [primaryContact.email, ...secondaryContacts.map((c: { email: any; }) => c.email).filter(Boolean)],
-      phoneNumbers: [primaryContact.phoneNumber, ...secondaryContacts.map((c: { phoneNumber: any; }) => c.phoneNumber).filter(Boolean)],
-      secondaryContactIds: secondaryContacts.map((c: { id: any; }) => c.id)
-    }
-  });
-}
-
-export {
-  identifyContact
-}
+};

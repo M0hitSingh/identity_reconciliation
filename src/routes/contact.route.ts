@@ -1,8 +1,9 @@
 import { Router } from 'express';
-import { identifyContact } from '../controllers/contact.controller'
+import { identifyContact } from '../controllers/contact.controller';
+import { validateContact } from '../middlewares/validators';
+
 const router = Router();
 
-router.route('/identify')
-    .post(identifyContact)
+router.post('/identify', validateContact, identifyContact);
 
 export default router;
